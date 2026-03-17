@@ -11,7 +11,7 @@ app = FastAPI()
 # ============================
 CLIENT_ID = os.getenv("THUMBTACK_CLIENT_ID", "YOUR_CLIENT_ID")
 CLIENT_SECRET = os.getenv("THUMBTACK_CLIENT_SECRET", "YOUR_CLIENT_SECRET")
-REDIRECT_URI = "https://your-app.onrender.com/callback"  # замени на свой URL после деплоя
+REDIRECT_URI = "https://thumbtack-oauth.onrender.com/callback"  # замени на свой URL после деплоя
 TOKEN_FILE = "token.json"  # токен сохраняется в файл
 # ============================
 
