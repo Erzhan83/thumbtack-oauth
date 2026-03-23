@@ -22,7 +22,11 @@ CF_API_TOKEN   = os.getenv("CF_API_TOKEN", "cfat_IDBotmUkpAQYYGKcE2czZ5nnwHogku5
 CF_KV_NS_ID    = os.getenv("CF_KV_NS_ID", "8705996ebea74c23b4f5908085285bc5")
 
 REDIRECT_URI   = "https://thumbtack-oauth.onrender.com/callback"
-THUMBTACK_API  = "https://api.thumbtack.com"
+
+# Thumbtack correct endpoints (production)
+TT_AUTH_URL    = "https://auth.thumbtack.com/oauth2/auth"
+TT_TOKEN_URL   = "https://auth.thumbtack.com/oauth2/token"
+TT_API_BASE    = "https://api.thumbtack.com/api"
 
 # VAPI
 VAPI_ASSISTANT_ID    = "2d48591e-a23d-4e33-af29-acfe4dddf78b"
@@ -51,15 +55,9 @@ def kv_headers() -> dict:
     return {"Authorization": f"Bearer {CF_API_TOKEN}"}
 
 def kv_save_token(pro_id: str, token_data: dict):
-    """Save Pro's token to Cloudflare KV keyed by pro_id."""
-    requests.put(
-        kv_url(f"pro:{pro_id}"),
-        headers=kv_headers(),
-        data=json.dumps(token_data),
-    )
+    requests.put(kv_url(f"pro:{pro_id}"), headers=kv_headers(), data=json.dumps(token_data))
 
 def kv_load_token(pro_id: str) -> dict | None:
-    """Load Pro's token from Cloudflare KV."""
     resp = requests.get(kv_url(f"pro:{pro_id}"), headers=kv_headers())
     if resp.status_code == 200:
         try:
@@ -69,7 +67,6 @@ def kv_load_token(pro_id: str) -> dict | None:
     return None
 
 def kv_list_pros() -> list[str]:
-    """List all registered Pro IDs."""
     resp = requests.get(
         f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/storage/kv/namespaces/{CF_KV_NS_ID}/keys?prefix=pro:",
         headers=kv_headers(),
@@ -80,13 +77,11 @@ def kv_list_pros() -> list[str]:
     return []
 
 def decode_jwt_payload(token: str) -> dict:
-    """Decode JWT payload without verification to extract user claims."""
     try:
         parts = token.split(".")
         if len(parts) < 2:
             return {}
         payload = parts[1]
-        # Add padding
         payload += "=" * (4 - len(payload) % 4)
         decoded = base64.urlsafe_b64decode(payload)
         return json.loads(decoded)
@@ -98,14 +93,13 @@ def decode_jwt_payload(token: str) -> dict:
 # ============================
 
 async def refresh_pro_token(pro_id: str) -> str | None:
-    """Refresh access token for a specific Pro."""
     token_data = kv_load_token(pro_id)
     if not token_data or not token_data.get("refresh_token"):
         return None
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{THUMBTACK_API}/v4/oauth/token",
+            TT_TOKEN_URL,
             data={
                 "grant_type": "refresh_token",
                 "refresh_token": token_data["refresh_token"],
@@ -115,7 +109,6 @@ async def refresh_pro_token(pro_id: str) -> str | None:
         )
     if resp.status_code == 200:
         new_token = resp.json()
-        # Preserve refresh_token if new one not returned
         if not new_token.get("refresh_token"):
             new_token["refresh_token"] = token_data["refresh_token"]
         kv_save_token(pro_id, new_token)
@@ -123,7 +116,6 @@ async def refresh_pro_token(pro_id: str) -> str | None:
     return None
 
 async def get_pro_token(pro_id: str) -> str | None:
-    """Get valid access token for a Pro, refreshing if needed."""
     token_data = kv_load_token(pro_id)
     if not token_data:
         return None
@@ -133,15 +125,14 @@ async def get_pro_token(pro_id: str) -> str | None:
     return await refresh_pro_token(pro_id)
 
 async def send_thumbtack_message(negotiation_id: str, message: str, access_token: str):
-    """Send a message in Thumbtack chat on behalf of the Pro."""
     async with httpx.AsyncClient() as client:
         await client.post(
-            f"{THUMBTACK_API}/v4/negotiations/{negotiation_id}/messages",
+            f"{TT_API_BASE}/v4/negotiations/{negotiation_id}/messages",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
             },
-            json={"message": message},
+            json={"text": message},
         )
 
 # ============================
@@ -199,9 +190,9 @@ def root():
 
 @app.get("/login")
 def login():
-    """Start OAuth flow for a Pro."""
+    """Start OAuth flow — redirect Pro to Thumbtack authorization page."""
     auth_url = (
-        f"https://pro.thumbtack.com/oauth/authorize"
+        f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&response_type=code"
@@ -221,7 +212,7 @@ async def callback(request: Request, code: str = None, error: str = None):
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{THUMBTACK_API}/v4/oauth/token",
+            TT_TOKEN_URL,
             data={
                 "grant_type": "authorization_code",
                 "code": code,
@@ -241,7 +232,6 @@ async def callback(request: Request, code: str = None, error: str = None):
     claims = decode_jwt_payload(id_token) if id_token else {}
     pro_id = claims.get("sub") or claims.get("user_id") or "default"
 
-    # Save token to Cloudflare KV keyed by pro_id
     kv_save_token(pro_id, token_data)
 
     return HTMLResponse(content=f"""
@@ -254,14 +244,12 @@ async def callback(request: Request, code: str = None, error: str = None):
 
 @app.get("/pros")
 def list_pros():
-    """List all connected Pros (for admin use)."""
     pros = kv_list_pros()
     return {"connected_pros": pros, "count": len(pros)}
 
 
 @app.get("/token/{pro_id}")
 def get_token(pro_id: str = "default"):
-    """Show token status for a Pro (no sensitive data)."""
     token_data = kv_load_token(pro_id)
     if not token_data:
         return {"error": f"No token for pro_id={pro_id}. Authorize via /login first."}
@@ -275,10 +263,7 @@ def get_token(pro_id: str = "default"):
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    """
-    Thumbtack sends lead events here.
-    Handles: NegotiationCreatedV4, MessageCreatedV4
-    """
+    """Receives Thumbtack lead events: NegotiationCreatedV4, MessageCreatedV4"""
     try:
         body = await request.json()
     except Exception:
@@ -287,7 +272,6 @@ async def webhook(request: Request):
     event_type = body.get("eventType") or body.get("type", "")
     data = body.get("data", body)
 
-    # Identify which Pro this webhook is for
     pro_id = data.get("proId") or data.get("userId") or "default"
     access_token = await get_pro_token(pro_id)
 
