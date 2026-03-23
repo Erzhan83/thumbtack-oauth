@@ -190,7 +190,7 @@ def root():
 
 @app.get("/debug")
 def debug():
-    """Show exact OAuth URL that will be used — for debugging."""
+    """Show exact OAuth URL — for debugging."""
     auth_url = (
         f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
@@ -204,12 +204,17 @@ def debug():
         "client_id_ok": CLIENT_ID != "YOUR_CLIENT_ID",
         "redirect_uri": REDIRECT_URI,
         "auth_url": auth_url,
+        "test_variants": {
+            "A_no_audience": f"{TT_AUTH_URL}?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=openid%20offline_access",
+            "B_offline_only": f"{TT_AUTH_URL}?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=offline_access&audience=urn%3Apartner-api",
+            "C_openid_only": f"{TT_AUTH_URL}?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=openid&audience=urn%3Apartner-api",
+        }
     }
 
 
 @app.get("/login")
 def login():
-    """Start OAuth flow — redirect Pro to Thumbtack authorization page."""
+    """Start OAuth — full params with audience."""
     auth_url = (
         f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
@@ -221,12 +226,53 @@ def login():
     return RedirectResponse(url=auth_url)
 
 
+@app.get("/login-a")
+def login_a():
+    """Test A: openid offline_access WITHOUT audience param."""
+    auth_url = (
+        f"{TT_AUTH_URL}"
+        f"?client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=openid%20offline_access"
+    )
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/login-b")
+def login_b():
+    """Test B: offline_access only WITH audience."""
+    auth_url = (
+        f"{TT_AUTH_URL}"
+        f"?client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=offline_access"
+        f"&audience=urn%3Apartner-api"
+    )
+    return RedirectResponse(url=auth_url)
+
+
+@app.get("/login-c")
+def login_c():
+    """Test C: openid only WITH audience."""
+    auth_url = (
+        f"{TT_AUTH_URL}"
+        f"?client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=openid"
+        f"&audience=urn%3Apartner-api"
+    )
+    return RedirectResponse(url=auth_url)
+
+
 @app.get("/callback")
 async def callback(request: Request, code: str = None, error: str = None, error_description: str = None):
     """Thumbtack redirects here after Pro authorization."""
     if error:
         return HTMLResponse(
-            content=f"❌ Authorization error: {error}<br>Description: {error_description or 'none'}<br>Full URL: {str(request.url)}",
+            content=f"❌ Error: <b>{error}</b><br>Description: {error_description or 'none'}<br><br>Full URL: {str(request.url)}",
             status_code=400
         )
     if not code:
