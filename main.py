@@ -5,6 +5,7 @@ import os
 import json
 import requests
 import base64
+import secrets
 
 app = FastAPI()
 
@@ -188,60 +189,10 @@ def root():
     return {"status": "Thumbtack OAuth Server is running ✅"}
 
 
-@app.get("/debug")
-def debug():
-    """Show exact OAuth URL — for debugging."""
-    auth_url = (
-        f"{TT_AUTH_URL}"
-        f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=openid%20offline_access"
-        f"&audience=urn%3Apartner-api"
-    )
-    return {
-        "client_id": CLIENT_ID,
-        "client_id_ok": CLIENT_ID != "YOUR_CLIENT_ID",
-        "redirect_uri": REDIRECT_URI,
-        "auth_url": auth_url,
-        "test_variants": {
-            "A_no_audience": f"{TT_AUTH_URL}?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=openid%20offline_access",
-            "B_offline_only": f"{TT_AUTH_URL}?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=offline_access&audience=urn%3Apartner-api",
-            "C_openid_only": f"{TT_AUTH_URL}?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&response_type=code&scope=openid&audience=urn%3Apartner-api",
-        }
-    }
-
-
 @app.get("/login")
 def login():
-    """Start OAuth — full params with audience."""
-    auth_url = (
-        f"{TT_AUTH_URL}"
-        f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=openid%20offline_access"
-        f"&audience=urn%3Apartner-api"
-    )
-    return RedirectResponse(url=auth_url)
-
-
-@app.get("/login-a")
-def login_a():
-    """Test A: openid offline_access WITHOUT audience param."""
-    auth_url = (
-        f"{TT_AUTH_URL}"
-        f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=openid%20offline_access"
-    )
-    return RedirectResponse(url=auth_url)
-
-
-@app.get("/login-b")
-def login_b():
-    """Test B: offline_access only WITH audience."""
+    """Start OAuth flow — correct scope + state."""
+    state = secrets.token_urlsafe(16)  # 16 bytes = 22 chars, well above 8-char minimum
     auth_url = (
         f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
@@ -249,26 +200,13 @@ def login_b():
         f"&response_type=code"
         f"&scope=offline_access"
         f"&audience=urn%3Apartner-api"
-    )
-    return RedirectResponse(url=auth_url)
-
-
-@app.get("/login-c")
-def login_c():
-    """Test C: openid only WITH audience."""
-    auth_url = (
-        f"{TT_AUTH_URL}"
-        f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=openid"
-        f"&audience=urn%3Apartner-api"
+        f"&state={state}"
     )
     return RedirectResponse(url=auth_url)
 
 
 @app.get("/callback")
-async def callback(request: Request, code: str = None, error: str = None, error_description: str = None):
+async def callback(request: Request, code: str = None, error: str = None, error_description: str = None, state: str = None):
     """Thumbtack redirects here after Pro authorization."""
     if error:
         return HTMLResponse(
@@ -295,9 +233,9 @@ async def callback(request: Request, code: str = None, error: str = None, error_
 
     token_data = response.json()
 
-    # Extract pro_id from the ID token (JWT)
-    id_token = token_data.get("id_token", "")
-    claims = decode_jwt_payload(id_token) if id_token else {}
+    # Extract pro_id from access token (JWT) — no id_token since openid scope not used
+    access_token_jwt = token_data.get("access_token", "")
+    claims = decode_jwt_payload(access_token_jwt)
     pro_id = claims.get("sub") or claims.get("user_id") or "default"
 
     kv_save_token(pro_id, token_data)
@@ -305,6 +243,8 @@ async def callback(request: Request, code: str = None, error: str = None, error_
     return HTMLResponse(content=f"""
         <h2>✅ Authorization successful!</h2>
         <p>Pro ID: <code>{pro_id}</code></p>
+        <p>Scope: <code>{token_data.get('scope', 'n/a')}</code></p>
+        <p>Has refresh_token: <code>{bool(token_data.get('refresh_token'))}</code></p>
         <p>Connected to Thumbtack. AI will now handle leads automatically.</p>
         <p>You can close this page.</p>
     """)
