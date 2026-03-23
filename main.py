@@ -196,7 +196,7 @@ def login():
         f"?client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&response_type=code"
-        f"&scope=openid%20offline_access"
+        f"&scope=offline_access"
         f"&audience=urn%3Apartner-api"
     )
     return RedirectResponse(url=auth_url)
