@@ -11,8 +11,8 @@ app = FastAPI()
 # ============================
 # CONFIG (Render Environment Variables)
 # ============================
-CLIENT_ID      = os.getenv("THUMBTACK_CLIENT_ID", "YOUR_CLIENT_ID")
-CLIENT_SECRET  = os.getenv("THUMBTACK_CLIENT_SECRET", "YOUR_CLIENT_SECRET")
+CLIENT_ID      = os.getenv("THUMBTACK_CLIENT_ID", "7e19ea23-5927-4d0c-bb34-8628ac4cc139")
+CLIENT_SECRET  = os.getenv("THUMBTACK_CLIENT_SECRET", "ZAzZa.HNT5YW6yYe3sbrA~OBZv")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 VAPI_API_KEY   = os.getenv("VAPI_API_KEY", "b66dff86-76f4-4cca-af7a-39889f87e8b8")
 
@@ -188,6 +188,25 @@ def root():
     return {"status": "Thumbtack OAuth Server is running ✅"}
 
 
+@app.get("/debug")
+def debug():
+    """Show exact OAuth URL that will be used — for debugging."""
+    auth_url = (
+        f"{TT_AUTH_URL}"
+        f"?client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&response_type=code"
+        f"&scope=openid%20offline_access"
+        f"&audience=urn%3Apartner-api"
+    )
+    return {
+        "client_id": CLIENT_ID,
+        "client_id_ok": CLIENT_ID != "YOUR_CLIENT_ID",
+        "redirect_uri": REDIRECT_URI,
+        "auth_url": auth_url,
+    }
+
+
 @app.get("/login")
 def login():
     """Start OAuth flow — redirect Pro to Thumbtack authorization page."""
@@ -196,17 +215,20 @@ def login():
         f"?client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&response_type=code"
-        f"&scope=offline_access"
+        f"&scope=openid%20offline_access"
         f"&audience=urn%3Apartner-api"
     )
     return RedirectResponse(url=auth_url)
 
 
 @app.get("/callback")
-async def callback(request: Request, code: str = None, error: str = None):
+async def callback(request: Request, code: str = None, error: str = None, error_description: str = None):
     """Thumbtack redirects here after Pro authorization."""
     if error:
-        return HTMLResponse(content=f"❌ Authorization error: {error}", status_code=400)
+        return HTMLResponse(
+            content=f"❌ Authorization error: {error}<br>Description: {error_description or 'none'}<br>Full URL: {str(request.url)}",
+            status_code=400
+        )
     if not code:
         return HTMLResponse(content="❌ No authorization code received", status_code=400)
 
