@@ -6,6 +6,7 @@ import json
 import requests
 import base64
 import secrets
+from urllib.parse import quote
 
 app = FastAPI()
 
@@ -28,6 +29,17 @@ REDIRECT_URI   = "https://thumbtack-oauth.onrender.com/callback"
 TT_AUTH_URL    = "https://auth.thumbtack.com/oauth2/auth"
 TT_TOKEN_URL   = "https://auth.thumbtack.com/oauth2/token"
 TT_API_BASE    = "https://api.thumbtack.com/api"
+
+# Scopes needed for Pro (supply) access
+TT_SCOPES = " ".join([
+    "offline_access",
+    "supply::businesses.list",
+    "supply::negotiations.read",
+    "supply::messages.read",
+    "supply::messages.write",
+    "supply::webhooks.read",
+    "supply::webhooks.write",
+])
 
 # VAPI
 VAPI_ASSISTANT_ID    = "2d48591e-a23d-4e33-af29-acfe4dddf78b"
@@ -90,7 +102,6 @@ def decode_jwt_payload(token: str) -> dict:
         return {}
 
 def basic_auth_header() -> str:
-    """Build Authorization: Basic header from client_id:client_secret."""
     credentials = f"{CLIENT_ID}:{CLIENT_SECRET}"
     encoded = base64.b64encode(credentials.encode()).decode()
     return f"Basic {encoded}"
@@ -191,19 +202,19 @@ def trigger_vapi_call(customer_name: str, customer_phone: str, service: str):
 
 @app.get("/")
 def root():
-    return {"status": "Thumbtack OAuth Server is running ✅"}
+    return {"status": "Thumbtack OAuth Server is running ✅", "scopes": TT_SCOPES}
 
 
 @app.get("/login")
 def login():
-    """Start OAuth flow."""
+    """Start OAuth flow with full supply scopes."""
     state = secrets.token_urlsafe(16)
     auth_url = (
         f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&response_type=code"
-        f"&scope=offline_access"
+        f"&scope={quote(TT_SCOPES)}"
         f"&audience=urn%3Apartner-api"
         f"&state={state}"
     )
@@ -221,7 +232,6 @@ async def callback(request: Request, code: str = None, error: str = None, error_
     if not code:
         return HTMLResponse(content="❌ No authorization code received", status_code=400)
 
-    # Use client_secret_basic: credentials in Authorization header
     async with httpx.AsyncClient() as client:
         response = await client.post(
             TT_TOKEN_URL,
@@ -238,7 +248,6 @@ async def callback(request: Request, code: str = None, error: str = None, error_
 
     token_data = response.json()
 
-    # Extract pro_id from access token JWT
     access_token_jwt = token_data.get("access_token", "")
     claims = decode_jwt_payload(access_token_jwt)
     pro_id = claims.get("sub") or claims.get("user_id") or "default"
