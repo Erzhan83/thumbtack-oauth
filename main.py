@@ -89,6 +89,12 @@ def decode_jwt_payload(token: str) -> dict:
     except Exception:
         return {}
 
+def basic_auth_header() -> str:
+    """Build Authorization: Basic header from client_id:client_secret."""
+    credentials = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    encoded = base64.b64encode(credentials.encode()).decode()
+    return f"Basic {encoded}"
+
 # ============================
 # THUMBTACK API HELPERS
 # ============================
@@ -101,11 +107,10 @@ async def refresh_pro_token(pro_id: str) -> str | None:
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             TT_TOKEN_URL,
+            headers={"Authorization": basic_auth_header()},
             data={
                 "grant_type": "refresh_token",
                 "refresh_token": token_data["refresh_token"],
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
             },
         )
     if resp.status_code == 200:
@@ -191,8 +196,8 @@ def root():
 
 @app.get("/login")
 def login():
-    """Start OAuth flow — correct scope + state."""
-    state = secrets.token_urlsafe(16)  # 16 bytes = 22 chars, well above 8-char minimum
+    """Start OAuth flow."""
+    state = secrets.token_urlsafe(16)
     auth_url = (
         f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
@@ -216,15 +221,15 @@ async def callback(request: Request, code: str = None, error: str = None, error_
     if not code:
         return HTMLResponse(content="❌ No authorization code received", status_code=400)
 
+    # Use client_secret_basic: credentials in Authorization header
     async with httpx.AsyncClient() as client:
         response = await client.post(
             TT_TOKEN_URL,
+            headers={"Authorization": basic_auth_header()},
             data={
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": REDIRECT_URI,
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
             },
         )
 
@@ -233,7 +238,7 @@ async def callback(request: Request, code: str = None, error: str = None, error_
 
     token_data = response.json()
 
-    # Extract pro_id from access token (JWT) — no id_token since openid scope not used
+    # Extract pro_id from access token JWT
     access_token_jwt = token_data.get("access_token", "")
     claims = decode_jwt_payload(access_token_jwt)
     pro_id = claims.get("sub") or claims.get("user_id") or "default"
