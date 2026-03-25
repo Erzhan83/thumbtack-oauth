@@ -5,20 +5,20 @@ import os
 import json
 import requests
 import base64
-import time
 import secrets
+import time
 from urllib.parse import quote
 
 app = FastAPI()
 
-CLIENT_ID      = os.getenv("THUMBTACK_CLIENT_ID", "7e19ea23-5927-4d0c-bb34-8628ac4cc139")
-CLIENT_SECRET  = os.getenv("THUMBTACK_CLIENT_SECRET", "ZAzZa.HNT5YW6yYe3sbrA~OBZv")
+CLIENT_ID      = os.getenv("THUMBTACK_CLIENT_ID")
+CLIENT_SECRET  = os.getenv("THUMBTACK_CLIENT_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-VAPI_API_KEY   = os.getenv("VAPI_API_KEY", "b66dff86-76f4-4cca-af7a-39889f87e8b8")
+VAPI_API_KEY   = os.getenv("VAPI_API_KEY")
 
-CF_ACCOUNT_ID  = os.getenv("CF_ACCOUNT_ID", "947e28c8b310dca3060ebcbd29246ee5")
-CF_API_TOKEN   = os.getenv("CF_API_TOKEN", "cfat_IDBotmUkpAQYYGKcE2czZ5nnwHogku5lQ2FbeLJf4dbc84b6")
-CF_KV_NS_ID    = os.getenv("CF_KV_NS_ID", "8705996ebea74c23b4f5908085285bc5")
+CF_ACCOUNT_ID  = os.getenv("CF_ACCOUNT_ID")
+CF_API_TOKEN   = os.getenv("CF_API_TOKEN")
+CF_KV_NS_ID    = os.getenv("CF_KV_NS_ID")
 
 REDIRECT_URI   = "https://thumbtack-oauth.onrender.com/callback"
 TT_AUTH_URL    = "https://auth.thumbtack.com/oauth2/auth"
@@ -35,8 +35,8 @@ TT_SCOPES = " ".join([
     "supply::webhooks.write",
 ])
 
-VAPI_ASSISTANT_ID    = "2d48591e-a23d-4e33-af29-acfe4dddf78b"
-VAPI_PHONE_NUMBER_ID = "c1072055-69d2-43e5-878b-6db30524a8a8"
+VAPI_ASSISTANT_ID    = os.getenv("VAPI_ASSISTANT_ID")
+VAPI_PHONE_NUMBER_ID = os.getenv("VAPI_PHONE_NUMBER_ID")
 
 ISAAC_PROMPT = """You are Isaac, a professional handyman in Miami/Hollywood, FL.
 A potential client just submitted a request on Thumbtack. Write a short, warm, professional response.
@@ -50,16 +50,16 @@ Rules:
 - Sign off as: Isaac | Isaac Handyman Services
 """
 
-def kv_url(key: str) -> str:
+def kv_url(key):
     return f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/storage/kv/namespaces/{CF_KV_NS_ID}/values/{key}"
 
-def kv_headers() -> dict:
+def kv_headers():
     return {"Authorization": f"Bearer {CF_API_TOKEN}"}
 
-def kv_save_token(pro_id: str, token_data: dict):
+def kv_save_token(pro_id, token_data):
     requests.put(kv_url(f"pro:{pro_id}"), headers=kv_headers(), data=json.dumps(token_data))
 
-def kv_load_token(pro_id: str):
+def kv_load_token(pro_id):
     resp = requests.get(kv_url(f"pro:{pro_id}"), headers=kv_headers())
     if resp.status_code == 200:
         try:
@@ -68,17 +68,16 @@ def kv_load_token(pro_id: str):
             return None
     return None
 
-def kv_list_pros() -> list:
+def kv_list_pros():
     resp = requests.get(
         f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/storage/kv/namespaces/{CF_KV_NS_ID}/keys?prefix=pro:",
         headers=kv_headers(),
     )
     if resp.status_code == 200:
-        keys = resp.json().get("result", [])
-        return [k["name"].replace("pro:", "") for k in keys]
+        return [k["name"].replace("pro:", "") for k in resp.json().get("result", [])]
     return []
 
-def decode_jwt_payload(token: str) -> dict:
+def decode_jwt_payload(token):
     try:
         parts = token.split(".")
         if len(parts) < 2:
@@ -88,11 +87,11 @@ def decode_jwt_payload(token: str) -> dict:
     except Exception:
         return {}
 
-def basic_auth_header() -> str:
+def basic_auth_header():
     encoded = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
     return f"Basic {encoded}"
 
-async def refresh_pro_token(pro_id: str):
+async def refresh_pro_token(pro_id):
     token_data = kv_load_token(pro_id)
     if not token_data or not token_data.get("refresh_token"):
         return None
@@ -110,7 +109,7 @@ async def refresh_pro_token(pro_id: str):
         return new_token.get("access_token")
     return None
 
-async def get_pro_token(pro_id: str):
+async def get_pro_token(pro_id):
     token_data = kv_load_token(pro_id)
     if not token_data:
         return None
@@ -121,7 +120,7 @@ async def get_pro_token(pro_id: str):
             return access_token
     return await refresh_pro_token(pro_id)
 
-async def send_thumbtack_message(negotiation_id: str, message: str, access_token: str):
+async def send_thumbtack_message(negotiation_id, message, access_token):
     async with httpx.AsyncClient() as client:
         await client.post(
             f"{TT_API_BASE}/v4/negotiations/{negotiation_id}/messages",
@@ -129,7 +128,7 @@ async def send_thumbtack_message(negotiation_id: str, message: str, access_token
             json={"text": message},
         )
 
-def generate_ai_response(customer_name: str, service: str, details: str) -> str:
+def generate_ai_response(customer_name, service, details):
     if not OPENAI_API_KEY:
         return f"Hi {customer_name}! Thanks for reaching out. I'd love to help with your {service}. Can you share more details or photos? — Isaac | Isaac Handyman Services"
     resp = requests.post(
@@ -149,7 +148,7 @@ def generate_ai_response(customer_name: str, service: str, details: str) -> str:
         return resp.json()["choices"][0]["message"]["content"].strip()
     return f"Hi {customer_name}! Thanks for your request. I'll get back to you shortly. — Isaac"
 
-def trigger_vapi_call(customer_name: str, customer_phone: str, service: str):
+def trigger_vapi_call(customer_name, customer_phone, service):
     phone = customer_phone.strip().replace("(", "").replace(")", "").replace("-", "").replace(" ", "")
     if not phone.startswith("+"):
         phone = "+1" + phone if len(phone) == 10 else "+" + phone
@@ -191,22 +190,18 @@ async def callback(request: Request, code: str = None, error: str = None, error_
         )
     if not code:
         return HTMLResponse(content="❌ No authorization code received", status_code=400)
-
     async with httpx.AsyncClient() as client:
         response = await client.post(
             TT_TOKEN_URL,
             headers={"Authorization": basic_auth_header()},
             data={"grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI},
         )
-
     if response.status_code != 200:
         return HTMLResponse(content=f"❌ Token error: {response.text}", status_code=500)
-
     token_data = response.json()
     claims = decode_jwt_payload(token_data.get("access_token", ""))
     pro_id = claims.get("sub") or claims.get("user_id") or "default"
     kv_save_token(pro_id, token_data)
-
     return HTMLResponse(content=f"""
         <h2>✅ Authorization successful!</h2>
         <p>Pro ID: <code>{pro_id}</code></p>
@@ -218,8 +213,7 @@ async def callback(request: Request, code: str = None, error: str = None, error_
 
 @app.get("/pros")
 def list_pros():
-    pros = kv_list_pros()
-    return {"connected_pros": pros, "count": len(pros)}
+    return {"connected_pros": kv_list_pros()}
 
 @app.get("/token/{pro_id}")
 def get_token(pro_id: str):
@@ -227,13 +221,12 @@ def get_token(pro_id: str):
     if not token_data:
         return {"error": f"No token for pro_id={pro_id}. Authorize via /login first."}
     claims = decode_jwt_payload(token_data.get("access_token", ""))
-    exp = claims.get("exp", 0)
     return {
         "pro_id": pro_id,
         "has_access_token": bool(token_data.get("access_token")),
         "has_refresh_token": bool(token_data.get("refresh_token")),
         "scope": token_data.get("scope"),
-        "expires_in_seconds": max(0, int(exp - time.time())),
+        "expires_in_seconds": max(0, int(claims.get("exp", 0) - time.time())),
     }
 
 @app.post("/webhook")
@@ -242,7 +235,6 @@ async def webhook(request: Request):
         body = await request.json()
     except Exception:
         return {"status": "ok"}
-
     event_type = body.get("eventType") or body.get("type", "")
     data = body.get("data", body)
     pro_id = data.get("proId") or data.get("userId") or "default"
@@ -254,7 +246,6 @@ async def webhook(request: Request):
         service        = data.get("serviceType") or data.get("category", "handyman service")
         details        = data.get("requestDescription") or data.get("description", "")
         negotiation_id = data.get("negotiationId") or data.get("id", "")
-
         ai_reply = generate_ai_response(customer_name, service, details)
         if access_token and negotiation_id:
             await send_thumbtack_message(negotiation_id, ai_reply, access_token)
@@ -268,7 +259,6 @@ async def webhook(request: Request):
         message_text   = data.get("messageText") or data.get("text", "")
         negotiation_id = data.get("negotiationId") or data.get("id", "")
         service        = data.get("serviceType", "handyman service")
-
         ai_reply = generate_ai_response(customer_name, service, message_text)
         if access_token and negotiation_id:
             await send_thumbtack_message(negotiation_id, ai_reply, access_token)
