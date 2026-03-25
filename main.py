@@ -26,7 +26,7 @@ CF_KV_NS_ID    = os.getenv("CF_KV_NS_ID", "8705996ebea74c23b4f5908085285bc5")
 REDIRECT_URI   = "https://thumbtack-oauth.onrender.com/callback"
 
 # Thumbtack correct endpoints (production)
-TT_AUTH_URL    = "https://auth.thumbtack.com/oauth2/auth"
+TT_AUTH_URL = "https://pro.thumbtack.com/oauth/authorize"
 TT_TOKEN_URL   = "https://auth.thumbtack.com/oauth2/token"
 TT_API_BASE    = "https://api.thumbtack.com/api"
 
