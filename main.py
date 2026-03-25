@@ -6,6 +6,7 @@ import json
 import requests
 import base64
 import time
+import secrets
 from urllib.parse import quote
 
 app = FastAPI()
@@ -49,8 +50,6 @@ Rules:
 - Sign off as: Isaac | Isaac Handyman Services
 """
 
-# === Cloudflare KV ===
-
 def kv_url(key: str) -> str:
     return f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/storage/kv/namespaces/{CF_KV_NS_ID}/values/{key}"
 
@@ -93,8 +92,6 @@ def basic_auth_header() -> str:
     encoded = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
     return f"Basic {encoded}"
 
-# === Token management ===
-
 async def refresh_pro_token(pro_id: str):
     token_data = kv_load_token(pro_id)
     if not token_data or not token_data.get("refresh_token"):
@@ -124,8 +121,6 @@ async def get_pro_token(pro_id: str):
             return access_token
     return await refresh_pro_token(pro_id)
 
-# === Thumbtack API ===
-
 async def send_thumbtack_message(negotiation_id: str, message: str, access_token: str):
     async with httpx.AsyncClient() as client:
         await client.post(
@@ -133,8 +128,6 @@ async def send_thumbtack_message(negotiation_id: str, message: str, access_token
             headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
             json={"text": message},
         )
-
-# === AI + VAPI ===
 
 def generate_ai_response(customer_name: str, service: str, details: str) -> str:
     if not OPENAI_API_KEY:
@@ -171,14 +164,13 @@ def trigger_vapi_call(customer_name: str, customer_phone: str, service: str):
         },
     )
 
-# === Routes ===
-
 @app.get("/")
 def root():
     return {"status": "Thumbtack OAuth Server is running ✅", "scopes": TT_SCOPES}
 
 @app.get("/login")
 def login():
+    state = secrets.token_urlsafe(16)
     auth_url = (
         f"{TT_AUTH_URL}"
         f"?client_id={CLIENT_ID}"
@@ -186,6 +178,7 @@ def login():
         f"&response_type=code"
         f"&scope={quote(TT_SCOPES)}"
         f"&audience=urn%3Apartner-api"
+        f"&state={state}"
     )
     return RedirectResponse(url=auth_url)
 
