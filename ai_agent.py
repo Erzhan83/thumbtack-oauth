@@ -19,6 +19,7 @@ from config import cfg
 from kv import get_conversation, save_conversation
 from models import Conversation, ConversationContext, State
 from pro_config import ProConfig
+from notify import notify
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,8 @@ TOOLS = [
             "name": "check_calendar",
             "description": (
                 "Проверяет доступные слоты для записи на конкретную дату. "
-                "ОБЯЗАТЕЛЬНО вызывать перед тем, как предложить любое время клиенту."
+                "ОБЯЗАТЕЛЬНО вызывать перед тем, как предложить любое время клиенту. "
+                "Передавай service чтобы правильно рассчитать длительность работы и буфер на дорогу."
             ),
             "parameters": {
                 "type": "object",
@@ -41,7 +43,11 @@ TOOLS = [
                     "date": {
                         "type": "string",
                         "description": "Дата в формате YYYY-MM-DD",
-                    }
+                    },
+                    "service": {
+                        "type": "string",
+                        "description": "Тип работы, например 'TV mounting', 'furniture assembly', 'fan replacement'",
+                    },
                 },
                 "required": ["date"],
             },
@@ -97,15 +103,15 @@ TOOLS = [
 # Calendar worker calls
 # ---------------------------------------------------------------------------
 
-async def _check_calendar(date: str, calendar_url: str) -> str:
+async def _check_calendar(date: str, calendar_url: str, service: str = "") -> str:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 f"{calendar_url}/calendar/slots",
-                params={"date": date},
+                params={"date": date, "service": service},
             )
         result = resp.json().get("result", "")
-        logger.info("check_calendar date=%s result=%s", date, result[:100])
+        logger.info("check_calendar date=%s service=%s result=%s", date, service, result[:100])
         return result
     except Exception as e:
         logger.error("check_calendar error: %s", e)
@@ -229,7 +235,9 @@ async def run_agent(
 
                 if fn_name == "check_calendar":
                     result = await _check_calendar(
-                        fn_args["date"], pro_config.calendar_worker_url
+                        fn_args["date"],
+                        pro_config.calendar_worker_url,
+                        fn_args.get("service", service),
                     )
 
                 elif fn_name == "book_appointment":
@@ -244,14 +252,28 @@ async def run_agent(
                             convo.state = State.BOOKED
                             convo.context.confirmed_time = fn_args.get("time", "")
                             convo.context.preferred_date = fn_args.get("date", "")
-                            convo.context.address = fn_args.get("address", "")
+                            convo.context.address        = fn_args.get("address", "")
                             logger.info("neg=%s → BOOKED", negotiation_id)
+                            await notify(
+                                f"✅ <b>Booking confirmed!</b>\n"
+                                f"👤 {convo.context.customer_name}\n"
+                                f"📅 {fn_args.get('date')} at {fn_args.get('time')}\n"
+                                f"🔧 {fn_args.get('service', service)}\n"
+                                f"📍 {fn_args.get('address', '—')}\n"
+                                f"📞 {fn_args.get('phone', '—')}"
+                            )
 
                 elif fn_name == "request_human":
                     reason = fn_args.get("reason", "")
                     convo.state = State.HUMAN_NEEDED
                     logger.warning("neg=%s → HUMAN_NEEDED reason=%s", negotiation_id, reason)
                     result = f"Human handoff requested: {reason}"
+                    await notify(
+                        f"⚠️ <b>Human needed</b>\n"
+                        f"👤 {convo.context.customer_name}\n"
+                        f"💬 {reason}\n"
+                        f"🆔 neg: {negotiation_id}"
+                    )
 
                 else:
                     result = f"Unknown tool: {fn_name}"

@@ -27,6 +27,7 @@ from models import State
 from vapi import trigger_call
 from pro_config import load_pro_config
 from first_message import build_lead_context
+from notify import notify
 import httpx
 
 # ---------------------------------------------------------------------------
@@ -184,8 +185,14 @@ async def webhook(request: Request):
         service        = data.get("serviceType") or data.get("category", "handyman service")
         details        = data.get("requestDescription") or data.get("description", "")
 
-        # Build structured context so the agent knows what's already known
-        # and doesn't ask redundant questions on first reply.
+        await notify(
+            f"🔔 <b>New lead</b>\n"
+            f"👤 {customer_name}\n"
+            f"🔧 {service}\n"
+            f"📝 {details[:200] if details else '—'}\n"
+            f"🆔 neg: {negotiation_id}"
+        )
+
         lead_context = build_lead_context(customer_name, service, details)
 
         reply = await run_agent(
