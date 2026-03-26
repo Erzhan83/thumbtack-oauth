@@ -51,8 +51,8 @@ async def startup():
         cfg()  # Проверяем env при старте
         logger.info("startup: конфиг загружен успешно")
     except ConfigError as e:
-        logger.critical("startup: %s", e)
-        raise
+        # Log but don't crash — missing vars will surface on first request
+        logger.critical("startup config error: %s", e)
 
 
 # ---------------------------------------------------------------------------
