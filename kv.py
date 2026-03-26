@@ -1,11 +1,12 @@
-"""
-Cloudflare KV — единственный слой работы с хранилищем.
+"""Cloudflare KV — единственный слой работы с хранилищем.
 
 Ключи:
   pro:{pro_id}              — OAuth токен Pro
   convo:{negotiation_id}    — состояние + история диалога
   config:{pro_id}           — конфиг Pro (prompt, pricing, vapi, ...)
 """
+from __future__ import annotations
+
 
 import json
 import time

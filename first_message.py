@@ -1,5 +1,4 @@
-"""
-first_message.py — structured lead context builder.
+"""first_message.py — structured lead context builder.
 
 When a new Thumbtack lead arrives (NegotiationCreatedV4), we parse the
 payload, extract what's already known, determine what's still missing,
@@ -9,6 +8,7 @@ message to the AI agent.
 This prevents the model from asking questions that were already answered
 in the lead, and lets it skip straight to price + scheduling when possible.
 """
+from __future__ import annotations
 
 import re
 

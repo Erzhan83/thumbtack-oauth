@@ -1,4 +1,5 @@
 """Thumbtack API client — токены и отправка сообщений."""
+from __future__ import annotations
 
 import base64
 import logging
