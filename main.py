@@ -87,7 +87,6 @@ def login():
     )
     return RedirectResponse(url=url)
 
-
 @app.get("/callback")
 async def callback(
     request: Request,
