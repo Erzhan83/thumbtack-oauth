@@ -20,9 +20,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from config import cfg, ConfigError
-from kv import get_conversation, decode_jwt_payload, save_token, list_pro_ids, get_token, token_is_fresh
+from kv import get_conversation, save_conversation, decode_jwt_payload, save_token, list_pro_ids, get_token, token_is_fresh
 from thumbtack import get_access_token, refresh_token, send_message
 from ai_agent import run_agent
+from models import State
 from vapi import trigger_call
 from pro_config import load_pro_config
 from first_message import build_lead_context
@@ -163,8 +164,14 @@ async def webhook(request: Request):
         event_type, pro_id, negotiation_id,
     )
 
-    # Пропускаем события от самого Pro (эхо)
+    # Если Pro сам написал — переводим диалог в PRO_ACTIVE, агент замолчит
     if data.get("senderType") == "PRO":
+        if negotiation_id:
+            raw = await get_conversation(negotiation_id)
+            if raw and raw.get("state") == State.ACTIVE:
+                raw["state"] = State.PRO_ACTIVE
+                await save_conversation(negotiation_id, raw)
+                logger.info("pro_takeover neg=%s → PRO_ACTIVE", negotiation_id)
         return {"status": "ok"}
 
     access_token = await get_access_token(pro_id)

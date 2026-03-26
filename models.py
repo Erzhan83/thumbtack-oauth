@@ -11,7 +11,8 @@ class State:
     ACTIVE       = "active"         # идёт диалог
     BOOKED       = "booked"         # запись создана
     REJECTED     = "rejected"       # клиент отказался
-    HUMAN_NEEDED = "human_needed"   # нужен живой человек
+    HUMAN_NEEDED = "human_needed"   # нужен живой человек (запрошен агентом)
+    PRO_ACTIVE   = "pro_active"     # Pro сам ответил — бот молчит
 
 
 @dataclass

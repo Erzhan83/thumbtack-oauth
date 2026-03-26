@@ -156,12 +156,15 @@ async def run_agent(
             ),
         )
 
-    # --- Guardrail: не отвечать если уже завершён ---
+    # --- Guardrail: не отвечать если уже завершён или Pro взял управление ---
     if convo.state == State.BOOKED:
         logger.info("neg=%s уже BOOKED, пропускаем", negotiation_id)
         return ""
     if convo.state == State.HUMAN_NEEDED:
         logger.info("neg=%s ожидает human handoff, пропускаем", negotiation_id)
+        return ""
+    if convo.state == State.PRO_ACTIVE:
+        logger.info("neg=%s Pro взял управление (PRO_ACTIVE), пропускаем", negotiation_id)
         return ""
 
     # --- Добавляем сообщение клиента в историю ---
