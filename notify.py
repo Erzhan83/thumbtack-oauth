@@ -2,22 +2,26 @@
 from __future__ import annotations
 
 import logging
+import os
+
 import httpx
 
 logger = logging.getLogger(__name__)
 
-_BOT_TOKEN = "8029784213:AAFG7-bKtyXBsvu5cG-mQOsBlr4sfxqIfNE"
-_CHAT_ID   = "505466255"
-
 
 async def notify(text: str) -> None:
     """Отправляет сообщение Ержану через HandyBot Telegram."""
+    token   = os.getenv("HANDYBOT_TELEGRAM_TOKEN")
+    chat_id = os.getenv("HANDYBOT_CHAT_ID")
+    if not token or not chat_id:
+        logger.debug("notify: HANDYBOT_TELEGRAM_TOKEN or HANDYBOT_CHAT_ID not set, skipping")
+        return
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             await client.post(
-                f"https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage",
+                f"https://api.telegram.org/bot{token}/sendMessage",
                 json={
-                    "chat_id":    _CHAT_ID,
+                    "chat_id":    chat_id,
                     "text":       text,
                     "parse_mode": "HTML",
                 },
