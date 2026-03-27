@@ -264,6 +264,15 @@ async def token_status(pro_id: str):
     }
 
 
+@app.post("/refresh/{pro_id}")
+async def force_refresh(pro_id: str):
+    """Принудительно обновляет access_token через refresh_token."""
+    new_token = await refresh_token(pro_id)
+    if not new_token:
+        return {"error": "Refresh failed. Re-authorize via /login."}
+    return {"pro_id": pro_id, "status": "refreshed", "is_fresh": True}
+
+
 @app.get("/convo/{negotiation_id}")
 async def convo_status(negotiation_id: str):
     data = await get_conversation(negotiation_id)
